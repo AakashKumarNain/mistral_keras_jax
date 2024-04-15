@@ -1,0 +1,13 @@
+absl-py==2.1.0
+h5py==3.10.0
+jax==0.4.25
+jaxlib==0.4.25
+keras==3.1.1
+ml-dtypes==0.3.2
+namex==0.0.7
+numpy==1.26.4
+opt-einsum==3.3.0
+optree==0.11.0
+pillow==10.2.0
+rich==13.7.1
+sentencepiece==0.2.0
