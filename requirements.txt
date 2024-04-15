@@ -10,4 +10,5 @@ opt-einsum==3.3.0
 optree==0.11.0
 pillow==10.2.0
 rich==13.7.1
+ruff==0.3.7
 sentencepiece==0.2.0
