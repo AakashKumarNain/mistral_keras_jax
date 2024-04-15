@@ -1,18 +1,15 @@
 import os
+
 os.environ["KERAS_BACKEND"] = "jax"
 
 import jax
-import numpy as np
 import jax.numpy as jnp
 
 import keras
 from keras import ops
 from keras import layers
-from keras import Model
 
 from functools import partial
-from typing import NamedTuple
-from typing import Optional, Tuple, List
 
 
 def precompute_frequencies(dim, max_pos, theta=10000.0):
@@ -57,7 +54,7 @@ def calculate_rope(x, cos_freq, sin_freq, offset=0):
 @jax.jit
 @jax.vmap
 def update_tensor(source, target, indices):
-    return target.at[indices].set(source[:len(indices)])
+    return target.at[indices].set(source[: len(indices)])
 
 
 class RMSNorm(layers.Layer):
@@ -73,13 +70,13 @@ class RMSNorm(layers.Layer):
             shape=(inputs_shape[-1],),
             initializer=self.kernel_initializer,
             trainable=True,
-            name=self.name +".weight",
+            name=self.name + ".weight",
             # dtype=self.layer_dtype,
         )
         self.built = True
 
     def _norm(self, x):
-        return x * ops.rsqrt(ops.mean(x ** 2, axis=-1, keepdims=True) + self.norm_epsilon)
+        return x * ops.rsqrt(ops.mean(x**2, axis=-1, keepdims=True) + self.norm_epsilon)
 
     def call(self, x):
         output = ops.cast(self._norm(ops.cast(x, "float32")), x.dtype)
@@ -96,17 +93,29 @@ class FeedForward(layers.Layer):
         self.name = name if name is not None else self.__class__.__name__
 
     def build(self, inputs_shape):
-        self.w1 = layers.Dense(self.hidden_dim, use_bias=False, name=f"{self.name}.w1", dtype=self.layer_dtype)
+        self.w1 = layers.Dense(
+            self.hidden_dim,
+            use_bias=False,
+            name=f"{self.name}.w1",
+            dtype=self.layer_dtype,
+        )
         w1_input_shape = list(inputs_shape)
         w1_input_shape[-1] = self.dim
         self.w1.build(w1_input_shape)
 
-        self.w2 = layers.Dense(self.dim, use_bias=False, name=f"{self.name}.w2", dtype=self.layer_dtype)
+        self.w2 = layers.Dense(
+            self.dim, use_bias=False, name=f"{self.name}.w2", dtype=self.layer_dtype
+        )
         w2_input_shape = list(inputs_shape)
         w2_input_shape[-1] = self.hidden_dim
         self.w2.build(w2_input_shape)
 
-        self.w3 = layers.Dense(self.hidden_dim, use_bias=False, name=f"{self.name}.w3", dtype=self.layer_dtype)
+        self.w3 = layers.Dense(
+            self.hidden_dim,
+            use_bias=False,
+            name=f"{self.name}.w3",
+            dtype=self.layer_dtype,
+        )
         w3_input_shape = list(inputs_shape)
         w3_input_shape[-1] = self.dim
         self.w3.build(w3_input_shape)
@@ -114,7 +123,9 @@ class FeedForward(layers.Layer):
         self.built = True
 
     def call(self, x):
-        return self.w2(ops.cast(self.act(ops.cast(self.w1(x), "float32")), x.dtype) * self.w3(x))
+        return self.w2(
+            ops.cast(self.act(ops.cast(self.w1(x), "float32")), x.dtype) * self.w3(x)
+        )
         # return self.w2(self.w1(x) * self.w3(x))
 
 
@@ -125,7 +136,7 @@ class Attention(layers.Layer):
         self.n_kv_heads = args.n_kv_heads
         self.kv_repeats = self.n_heads // self.n_kv_heads
         self.sliding_window = args.sliding_window
-        self.scale = args.head_dim ** -0.5
+        self.scale = args.head_dim**-0.5
         self.head_dim = args.head_dim
         self.dim = args.dim
         self.layer_dtype = dtype
@@ -135,25 +146,53 @@ class Attention(layers.Layer):
         wqkv_input_shape = list(inputs_shape)
         wqkv_input_shape[-1] = self.dim
 
-        self.wq = layers.Dense(self.n_heads * self.head_dim, use_bias=False, name=f"{self.name}.wq", dtype=self.layer_dtype)
+        self.wq = layers.Dense(
+            self.n_heads * self.head_dim,
+            use_bias=False,
+            name=f"{self.name}.wq",
+            dtype=self.layer_dtype,
+        )
         self.wq.build(wqkv_input_shape)
 
-        self.wk = layers.Dense(self.n_kv_heads * self.head_dim, use_bias=False, name=f"{self.name}.wk", dtype=self.layer_dtype)
+        self.wk = layers.Dense(
+            self.n_kv_heads * self.head_dim,
+            use_bias=False,
+            name=f"{self.name}.wk",
+            dtype=self.layer_dtype,
+        )
         self.wk.build(wqkv_input_shape)
 
-        self.wv = layers.Dense(self.n_kv_heads * self.head_dim, use_bias=False, name=f"{self.name}.wv", dtype=self.layer_dtype)
+        self.wv = layers.Dense(
+            self.n_kv_heads * self.head_dim,
+            use_bias=False,
+            name=f"{self.name}.wv",
+            dtype=self.layer_dtype,
+        )
         self.wv.build(wqkv_input_shape)
 
-        self.wo = layers.Dense(self.dim, use_bias=False, name=f"{self.name}.wo", dtype=self.layer_dtype)
+        self.wo = layers.Dense(
+            self.dim, use_bias=False, name=f"{self.name}.wo", dtype=self.layer_dtype
+        )
         wo_input_shape = list(inputs_shape)
         wo_input_shape[-1] = self.n_heads * self.head_dim
         self.wo.build(wo_input_shape)
 
         self.built = True
 
-    def call(self, x, cos_freq, sin_freq, positions, mask=None, cache_k=None, cache_v=None, training=True):
+    def call(
+        self,
+        x,
+        cos_freq,
+        sin_freq,
+        positions,
+        mask=None,
+        cache_k=None,
+        cache_v=None,
+        training=True,
+    ):
         # x shape: [batch_size, seqlen, num_heads, head_dim]
         bsz, seqlen, _ = ops.shape(x)
+
         # if x.dtype != "float16":
         #     x = ops.cast(x, "float16")
 
@@ -169,14 +208,18 @@ class Attention(layers.Layer):
         xk = calculate_rope(xk, cos_freq, sin_freq, 0)
 
         # # The cache is a rotating buffer
-        scatter_pos = (positions[-self.sliding_window:] % self.sliding_window)
-        scatter_pos = ops.stack([scatter_pos]* bsz).astype("int32")
+        scatter_pos = positions[-self.sliding_window :] % self.sliding_window
+        scatter_pos = ops.stack([scatter_pos] * bsz).astype("int32")
 
         if cache_k is not None:
-            cache_k = update_tensor(xk[:, -self.sliding_window:], cache_k[:bsz], scatter_pos)
+            cache_k = update_tensor(
+                xk[:, -self.sliding_window :], cache_k[:bsz], scatter_pos
+            )
 
         if cache_v is not None:
-            cache_v = update_tensor(xv[:, -self.sliding_window:], cache_v[:bsz], scatter_pos)
+            cache_v = update_tensor(
+                xv[:, -self.sliding_window :], cache_v[:bsz], scatter_pos
+            )
 
         if positions.shape[0] > 1:
             # prefill
@@ -190,12 +233,12 @@ class Attention(layers.Layer):
             cache_k_val = jax.lax.dynamic_slice(
                 cache_k,
                 (0, abs(cur_pos - self.sliding_window), 0, 0),
-                slice_sizes=(bsz, self.sliding_window, self.n_kv_heads, self.head_dim)
+                slice_sizes=(bsz, self.sliding_window, self.n_kv_heads, self.head_dim),
             )
             cache_v_val = jax.lax.dynamic_slice(
                 cache_v,
                 (0, abs(cur_pos - self.sliding_window), 0, 0),
-                slice_sizes=(bsz, self.sliding_window, self.n_kv_heads, self.head_dim)
+                slice_sizes=(bsz, self.sliding_window, self.n_kv_heads, self.head_dim),
             )
             key = jnp.repeat(cache_k_val, self.kv_repeats, axis=2)
             value = jnp.repeat(cache_v_val, self.kv_repeats, axis=2)
@@ -215,13 +258,14 @@ class Attention(layers.Layer):
             mask = mask[jnp.newaxis, jnp.newaxis, ...]
             scores = scores + mask
 
-        scores = ops.cast(ops.softmax(ops.cast(scores, "float32"), axis=-1), query.dtype)
+        scores = ops.cast(
+            ops.softmax(ops.cast(scores, "float32"), axis=-1), query.dtype
+        )
 
         output = jnp.matmul(scores, value)
         output = jnp.reshape(jnp.transpose(output, (0, 2, 1, 3)), (bsz, seqlen, -1))
         output = self.wo(output)
         return output, cache_k, cache_v
-
 
 
 class TransformerBlock(layers.Layer):
@@ -230,8 +274,12 @@ class TransformerBlock(layers.Layer):
         self.name = name if name is not None else self.__class__.__name__
         self.attention = Attention(args, name=f"{self.name}.attention", dtype=dtype)
         self.ffn = FeedForward(args, name=f"{self.name}.feed_forward", dtype=dtype)
-        self.attention_norm = RMSNorm(args.dim, eps=args.norm_eps, name=f"{self.name}.attention_norm")
-        self.ffn_norm = RMSNorm(args.dim, eps=args.norm_eps, name=f"{self.name}.ffn_norm", dtype=dtype)
+        self.attention_norm = RMSNorm(
+            args.dim, eps=args.norm_eps, name=f"{self.name}.attention_norm"
+        )
+        self.ffn_norm = RMSNorm(
+            args.dim, eps=args.norm_eps, name=f"{self.name}.ffn_norm", dtype=dtype
+        )
 
     def build(self, inputs_shape):
         self.attention.build(inputs_shape)
@@ -240,7 +288,17 @@ class TransformerBlock(layers.Layer):
         self.ffn_norm.build(inputs_shape)
         self.built = True
 
-    def call(self, x, cos_freq, sin_freq, positions, mask=None, cache_k=None, cache_v=None, training=True):
+    def call(
+        self,
+        x,
+        cos_freq,
+        sin_freq,
+        positions,
+        mask=None,
+        cache_k=None,
+        cache_v=None,
+        training=True,
+    ):
         r, cache_k, cache_v = self.attention(
             self.attention_norm(x),
             cos_freq,
@@ -249,7 +307,7 @@ class TransformerBlock(layers.Layer):
             mask=mask,
             cache_k=cache_k,
             cache_v=cache_v,
-            training=False
+            training=False,
         )
         h = x + r
         r = self.ffn(self.ffn_norm(h))
@@ -261,7 +319,9 @@ class Transformer(keras.Model):
     def __init__(self, args, dtype="float16"):
         super().__init__()
         self.sliding_window = args.sliding_window
-        self.tok_embeddings = layers.Embedding(args.vocab_size, args.dim, name="tok_embeddings", dtype=dtype)
+        self.tok_embeddings = layers.Embedding(
+            args.vocab_size, args.dim, name="tok_embeddings", dtype=dtype
+        )
         self.tf_layers = [
             TransformerBlock(args, name=f"transformer_layer.{i}", dtype=dtype)
             for i in range(args.n_layers)
@@ -301,7 +361,7 @@ class Transformer(keras.Model):
                 mask=mask,
                 cache_k=cache_k[i],
                 cache_v=cache_v[i],
-                training=training
+                training=training,
             )
             cache_k = ops.slice_update(cache_k, [i, 0, 0, 0, 0], cache_k_i[None, :])
             cache_v = ops.slice_update(cache_v, [i, 0, 0, 0, 0], cache_v_i[None, :])
