@@ -10,10 +10,16 @@ Any official restriction, if applicable, that comes with the original code and t
 - [x] Build the model with a 1:1 mapping from PyTorch to Keras
 - [x] Port weights from Torch to Keras
 - [x] Test with different dtypes
-- [ ] Provide a single script to run end-to-end generation
+- [x] Provide a single script to run end-to-end generation
 - [ ] Sharded inference
 - [ ] HLO graphs
 - [ ] Keras model optimizations
+
+## Instructions
+
+1. Clone the repo.
+2. Run the `generate.py` file located inside `src` to run generation for sample example.
+
 
 ## Known issues
 
