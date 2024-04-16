@@ -18,7 +18,8 @@ Any official restriction, if applicable, that comes with the original code and t
 ## Known issues
 
 - Setting` mixed_float16` global policy for Keras layers results in OOM
-- There seems to be a mismatch somewhere in the ported weights as the Keras model outputs are gibberish (this happens only when the ported weights are in `float16`)
+- Randomly initialized Pytorch model weights ported to Keras results in the same inputs but when the original weights are ported to Keras, the output of Keras model becomes gibberish suggesting that either there is a
+mismatch in the ported weights or floating-point relative and absolute difference becomes large as we increase the number of transformer blocks in the model.
 
 
 ## Call for Contributions
