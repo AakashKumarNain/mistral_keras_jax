@@ -193,9 +193,6 @@ class Attention(layers.Layer):
         # x shape: [batch_size, seqlen, num_heads, head_dim]
         bsz, seqlen, _ = ops.shape(x)
 
-        # if x.dtype != "float16":
-        #     x = ops.cast(x, "float16")
-
         xq = self.wq(x)
         xk = self.wk(x)
         xv = self.wv(x)
@@ -227,9 +224,6 @@ class Attention(layers.Layer):
             value = jnp.repeat(xv, self.kv_repeats, axis=2)
         else:
             cur_pos = positions[-1] + 1
-            # key = jnp.repeat(cache_k[:bsz, :cur_pos, ...], self.kv_repeats, axis=2)
-            # value = jnp.repeat(cache_v[:bsz, :cur_pos, ...], self.kv_repeats, axis=2)
-
             cache_k_val = jax.lax.dynamic_slice(
                 cache_k,
                 (0, abs(cur_pos - self.sliding_window), 0, 0),
@@ -366,5 +360,5 @@ class Transformer(keras.Model):
             cache_k = ops.slice_update(cache_k, [i, 0, 0, 0, 0], cache_k_i[None, :])
             cache_v = ops.slice_update(cache_v, [i, 0, 0, 0, 0], cache_v_i[None, :])
 
-        h = self.out(self.norm(ops.cast(h, "float32")))
+        h = self.out(self.norm(h))
         return h, cache_k, cache_v
