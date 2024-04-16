@@ -5,7 +5,7 @@ This repository contains a port of the original [Mistral-7B model](https://githu
 Any official restriction, if applicable, that comes with the original code and the model, applies here as well. Please check the original license and the [repo](https://github.com/mistralai/mistral-src/tree/main?tab=readme-ov-file) for the details.
 
 
-# Tasks
+## Tasks
 
 - [x] Build the model with a 1:1 mapping from PyTorch to Keras
 - [x] Port weights from Torch to Keras
@@ -14,6 +14,21 @@ Any official restriction, if applicable, that comes with the original code and t
 - [ ] Sharded inference
 - [ ] HLO graphs
 - [ ] Keras model optimizations
+
+## Known issues
+
+- Setting` mixed_float16` global policy for Keras layers results in OOM
+- There seems to be a mismatch somewhere in the ported weights as the Keras model outputs are gibberish (this happens only when the ported weights are in `float16`)
+
+
+## Call for Contributions
+
+You can pick any task from the above tasks list. Please open an issue regarding the feature you are working on.
+Also, we use `ruff` as the linter and formatter. Please format your code using the shell scripts provided before
+sending a PR.
+
+**Note:** Any nonsensical PR like updating the readme or adding docs to the existing functions will not be accepted
+at this point.
 
 
 ## References
