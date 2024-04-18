@@ -127,8 +127,8 @@ def main():
     # 4. kv cache tensors. Each attention layer has a cache associated with it
     cache_k = ops.zeros(
         (
-            args.n_layers,
             args.max_batch_size,
+            args.n_layers,
             args.sliding_window,
             args.n_kv_heads,
             args.head_dim,
@@ -137,8 +137,8 @@ def main():
     )
     cache_v = ops.zeros(
         (
-            args.n_layers,
             args.max_batch_size,
+            args.n_layers,
             args.sliding_window,
             args.n_kv_heads,
             args.head_dim,
