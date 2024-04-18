@@ -59,9 +59,9 @@ def update_tensor(source, target, indices):
 
 class RMSNorm(layers.Layer):
     def __init__(self, dim, eps=1e-6, name=None, dtype="float16"):
-        super().__init__()
+        super().__init__(dtype=dtype)
         self.norm_epsilon = eps
-        self.layer_dtype = dtype
+        self._dtype = dtype
         self.kernel_initializer = keras.initializers.get("ones")
         self.name = name if name is not None else self.__class__.__name__
 
@@ -71,7 +71,7 @@ class RMSNorm(layers.Layer):
             initializer=self.kernel_initializer,
             trainable=True,
             name=self.name + ".weight",
-            # dtype=self.layer_dtype,
+            dtype=self._dtype,
         )
         self.built = True
 
@@ -85,9 +85,9 @@ class RMSNorm(layers.Layer):
 
 class FeedForward(layers.Layer):
     def __init__(self, args, name=None, dtype="float16"):
-        super().__init__()
+        super().__init__(dtype=dtype)
         self.dim = args.dim
-        self.layer_dtype = dtype
+        self._dtype = dtype
         self.hidden_dim = args.hidden_dim
         self.act = keras.activations.silu
         self.name = name if name is not None else self.__class__.__name__
@@ -97,14 +97,14 @@ class FeedForward(layers.Layer):
             self.hidden_dim,
             use_bias=False,
             name=f"{self.name}.w1",
-            dtype=self.layer_dtype,
+            dtype=self._dtype,
         )
         w1_input_shape = list(inputs_shape)
         w1_input_shape[-1] = self.dim
         self.w1.build(w1_input_shape)
 
         self.w2 = layers.Dense(
-            self.dim, use_bias=False, name=f"{self.name}.w2", dtype=self.layer_dtype
+            self.dim, use_bias=False, name=f"{self.name}.w2", dtype=self._dtype
         )
         w2_input_shape = list(inputs_shape)
         w2_input_shape[-1] = self.hidden_dim
@@ -114,7 +114,7 @@ class FeedForward(layers.Layer):
             self.hidden_dim,
             use_bias=False,
             name=f"{self.name}.w3",
-            dtype=self.layer_dtype,
+            dtype=self._dtype,
         )
         w3_input_shape = list(inputs_shape)
         w3_input_shape[-1] = self.dim
@@ -126,12 +126,11 @@ class FeedForward(layers.Layer):
         return self.w2(
             ops.cast(self.act(ops.cast(self.w1(x), "float32")), x.dtype) * self.w3(x)
         )
-        # return self.w2(self.w1(x) * self.w3(x))
 
 
 class Attention(layers.Layer):
     def __init__(self, args, name=None, dtype="float16"):
-        super().__init__()
+        super().__init__(dtype=dtype)
         self.n_heads = args.n_heads
         self.n_kv_heads = args.n_kv_heads
         self.kv_repeats = self.n_heads // self.n_kv_heads
@@ -139,7 +138,7 @@ class Attention(layers.Layer):
         self.scale = args.head_dim**-0.5
         self.head_dim = args.head_dim
         self.dim = args.dim
-        self.layer_dtype = dtype
+        self._dtype = dtype
         self.name = name if name is not None else self.__class__.__name__
 
     def build(self, inputs_shape):
@@ -150,7 +149,7 @@ class Attention(layers.Layer):
             self.n_heads * self.head_dim,
             use_bias=False,
             name=f"{self.name}.wq",
-            dtype=self.layer_dtype,
+            dtype=self._dtype,
         )
         self.wq.build(wqkv_input_shape)
 
@@ -158,7 +157,7 @@ class Attention(layers.Layer):
             self.n_kv_heads * self.head_dim,
             use_bias=False,
             name=f"{self.name}.wk",
-            dtype=self.layer_dtype,
+            dtype=self._dtype,
         )
         self.wk.build(wqkv_input_shape)
 
@@ -166,12 +165,12 @@ class Attention(layers.Layer):
             self.n_kv_heads * self.head_dim,
             use_bias=False,
             name=f"{self.name}.wv",
-            dtype=self.layer_dtype,
+            dtype=self._dtype,
         )
         self.wv.build(wqkv_input_shape)
 
         self.wo = layers.Dense(
-            self.dim, use_bias=False, name=f"{self.name}.wo", dtype=self.layer_dtype
+            self.dim, use_bias=False, name=f"{self.name}.wo", dtype=self._dtype
         )
         wo_input_shape = list(inputs_shape)
         wo_input_shape[-1] = self.n_heads * self.head_dim
@@ -246,7 +245,8 @@ class Attention(layers.Layer):
 
 class TransformerBlock(layers.Layer):
     def __init__(self, args, name=None, dtype="float16"):
-        super().__init__()
+        super().__init__(dtype=dtype)
+        self._dtype = dtype
         self.name = name if name is not None else self.__class__.__name__
         self.attention = Attention(args, name=f"{self.name}.attention", dtype=dtype)
         self.ffn = FeedForward(args, name=f"{self.name}.feed_forward", dtype=dtype)
@@ -254,7 +254,9 @@ class TransformerBlock(layers.Layer):
             args.dim, eps=args.norm_eps, name=f"{self.name}.attention_norm"
         )
         self.ffn_norm = RMSNorm(
-            args.dim, eps=args.norm_eps, name=f"{self.name}.ffn_norm", dtype=dtype
+            args.dim,
+            eps=args.norm_eps,
+            name=f"{self.name}.ffn_norm",
         )
 
     def build(self, inputs_shape):
@@ -293,7 +295,8 @@ class TransformerBlock(layers.Layer):
 
 class Transformer(keras.Model):
     def __init__(self, args, dtype="float16"):
-        super().__init__()
+        super().__init__(dtype=dtype)
+        self._dtype = dtype
         self.sliding_window = args.sliding_window
         self.tok_embeddings = layers.Embedding(
             args.vocab_size, args.dim, name="tok_embeddings", dtype=dtype
@@ -303,14 +306,15 @@ class Transformer(keras.Model):
             for i in range(args.n_layers)
         ]
         self.norm = RMSNorm(args.dim, eps=args.norm_eps, name="norm")
-        self.out = layers.Dense(args.vocab_size, use_bias=False, name="out")
+        self.out = layers.Dense(
+            args.vocab_size, use_bias=False, name="out", dtype=dtype
+        )
         self.cos_freq, self.sin_freq = precompute_frequencies(args.head_dim, 128_000)
 
     def call(self, inputs, training=False):
         x, positions, cache_k, cache_v = inputs
         # caches are of the shape (max_batch_size, num_layers, max_seq_length, num_kv_heads, head_im)
-        # if x.dtype != "float16":
-        #     x = ops.cast(x, "float16")
+        # positions should be a 1D array
 
         # positions = positions[0]
         # if positions.ndim == 0:
