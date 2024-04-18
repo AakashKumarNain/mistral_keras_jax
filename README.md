@@ -21,16 +21,6 @@ Any official restriction, if applicable, that comes with the original code and t
 2. Run the `generate.py` file located inside `src` to run generation for sample example.
 
 
-## Known issues
-
-- Setting` mixed_float16` global policy for Keras layers results in OOM
-- ~~Randomly initialized Pytorch model weights ported to Keras results in the same outputs but when the original weights are ported to Keras, the output of Keras model becomes gibberish suggesting that either there is a
-mismatch in the ported weights or floating-point relative and absolute difference becomes large as we increase the number of transformer blocks in the model.~~
-
-- One of the underlying issues was caught in the KV cache which has been resolved now. There are certain times when the generated words are repeated after a certain length. Need to investigate the mask values, and other things
-for that.
-
-
 ## Call for Contributions
 
 You can pick any task from the above tasks list. Please open an issue regarding the feature you are working on.
