@@ -204,19 +204,11 @@ class Attention(layers.Layer):
         xq = calculate_rope(xq, cos_freq, sin_freq, 0)
         xk = calculate_rope(xk, cos_freq, sin_freq, 0)
 
-        # # The cache is a rotating buffer
-        scatter_pos = positions[-self.sliding_window :] % self.sliding_window
-        scatter_pos = ops.stack([scatter_pos] * bsz).astype("int32")
+        updated_cache_k = cache_k.at[:, positions, :, :].set(xk[:, positions])
+        cache_k = jnp.where(updated_cache_k != 0, updated_cache_k, cache_k)
 
-        if cache_k is not None:
-            cache_k = update_tensor(
-                xk[:, -self.sliding_window :], cache_k[:bsz], scatter_pos
-            )
-
-        if cache_v is not None:
-            cache_v = update_tensor(
-                xv[:, -self.sliding_window :], cache_v[:bsz], scatter_pos
-            )
+        updated_cache_v = cache_v.at[:, positions, :, :].set(xv[:, positions])
+        cache_v = jnp.where(updated_cache_v != 0, updated_cache_v, cache_v)
 
         if positions.shape[0] > 1:
             # prefill
@@ -224,18 +216,8 @@ class Attention(layers.Layer):
             value = jnp.repeat(xv, self.kv_repeats, axis=2)
         else:
             cur_pos = positions[-1] + 1
-            cache_k_val = jax.lax.dynamic_slice(
-                cache_k,
-                (0, abs(cur_pos - self.sliding_window), 0, 0),
-                slice_sizes=(bsz, self.sliding_window, self.n_kv_heads, self.head_dim),
-            )
-            cache_v_val = jax.lax.dynamic_slice(
-                cache_v,
-                (0, abs(cur_pos - self.sliding_window), 0, 0),
-                slice_sizes=(bsz, self.sliding_window, self.n_kv_heads, self.head_dim),
-            )
-            key = jnp.repeat(cache_k_val, self.kv_repeats, axis=2)
-            value = jnp.repeat(cache_v_val, self.kv_repeats, axis=2)
+            key = jnp.repeat(cache_k[:bsz, :cur_pos, :], self.kv_repeats, axis=2)
+            value = jnp.repeat(cache_v[:bsz, :cur_pos, :], self.kv_repeats, axis=2)
 
         # [bsz, seqlen, num_heads, head_dim] -> [bsz, num_heads, seqlen, head_dim]
         query = jnp.transpose(xq, (0, 2, 1, 3))
@@ -326,6 +308,7 @@ class Transformer(keras.Model):
 
     def call(self, inputs, training=False):
         x, positions, cache_k, cache_v = inputs
+        # caches are of the shape (max_batch_size, num_layers, max_seq_length, num_kv_heads, head_im)
         # if x.dtype != "float16":
         #     x = ops.cast(x, "float16")
 
@@ -353,12 +336,12 @@ class Transformer(keras.Model):
                 sin_freq,
                 positions,
                 mask=mask,
-                cache_k=cache_k[i],
-                cache_v=cache_v[i],
+                cache_k=cache_k[:, i],
+                cache_v=cache_v[:, i],
                 training=training,
             )
-            cache_k = ops.slice_update(cache_k, [i, 0, 0, 0, 0], cache_k_i[None, :])
-            cache_v = ops.slice_update(cache_v, [i, 0, 0, 0, 0], cache_v_i[None, :])
+            cache_k = ops.slice_update(cache_k, [0, i, 0, 0, 0], cache_k_i[:, None, :])
+            cache_v = ops.slice_update(cache_v, [0, i, 0, 0, 0], cache_v_i[:, None, :])
 
         h = self.out(self.norm(h))
         return h, cache_k, cache_v
