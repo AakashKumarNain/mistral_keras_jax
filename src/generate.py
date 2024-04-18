@@ -15,9 +15,6 @@ from keras import ops
 from model import Transformer
 from tokenizer import Tokenizer
 
-DTYPE_POLICY = "float16"
-keras.config.set_dtype_policy(DTYPE_POLICY)
-
 
 def generate(prompts, model, tokenizer, cache_k, cache_v, max_tokens=30):
     """Given a list of prompts, outputs `n` tokens.
