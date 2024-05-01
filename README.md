@@ -31,6 +31,13 @@ sending a PR.
 at this point.
 
 
+## Sample Results
+Here are the results that I got on my side after porting the model:
+<br><br>
+
+![](./model_files/sample_generation_results.png)
+
+
 ## References
 
 [1] [Mistral 7B- Official code implementation](https://github.com/mistralai/mistral-src/tree/main?tab=readme-ov-file)
