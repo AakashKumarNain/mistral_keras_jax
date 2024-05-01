@@ -9,7 +9,6 @@ from typing import NamedTuple
 import jax
 import jax.numpy as jnp
 
-import keras
 from keras import ops
 
 from model import Transformer
@@ -42,59 +41,38 @@ def generate(prompts, model, tokenizer, cache_k, cache_v, max_tokens=30):
     )
     for i, encoded in enumerate(encoded_prompts):
         input_tokens[i, : len(encoded)] = ops.convert_to_tensor(encoded)
-    input_mask = input_tokens != tokenizer.pad_id
+    # input_mask = input_tokens != tokenizer.pad_id
+    cur_pos = min_prompt_len
 
     # 3. pre-fill
     positions = jnp.arange(0, min_prompt_len)
     logits, cache_k, cache_v = model(
-        [jnp.asarray(input_tokens[:, :min_prompt_len]), positions, cache_k, cache_v]
+        [
+            jnp.asarray(input_tokens[:, :min_prompt_len]),
+            positions[None, :],
+            cache_k,
+            cache_v,
+        ]
     )
-    logprobs = jax.nn.log_softmax(ops.cast(logits, "float32"), axis=-1)
+    logits = ops.cast(logits, "float32")
+    logprobs = jax.nn.log_softmax(logits, axis=-1)
+    next_token = ops.argmax(logprobs[:, -1, :], axis=-1)
 
-    # 4. Decode
-    generated = []
-    all_logprobs = [
-        ops.squeeze(
-            ops.take_along_axis(
-                logprobs[:, :-1, :], input_tokens[:, 1:min_prompt_len, None], axis=2
-            ),
-            axis=-1,
-        )
-    ]
-    cur_pos = min_prompt_len
-
+    # 4. Generation
+    generated = [next_token[0].item()]
     for _ in range(max_tokens):
-        next_token = ops.argmax(logprobs[:, -1, :], axis=-1)
-
-        if cur_pos < input_mask.shape[1]:
-            next_token = ops.where(
-                input_mask[:, cur_pos], input_tokens[:, cur_pos], next_token
-            )
-
-        all_logprobs.append(
-            ops.take_along_axis(logprobs[:, -1, :], next_token[:, None], axis=1)
-        )
-
-        generated.append(next_token[:, None])
-
-        logits, cache_k, cache_v = model(
-            [next_token[:, None], jnp.array([cur_pos]), cache_k, cache_v]
-        )
-        logprobs = jax.nn.log_softmax(ops.cast(logits, "float32"), axis=-1)
         cur_pos += 1
+        logits, cache_k, cache_v = model(
+            [next_token[:, None], jnp.array([[cur_pos]]), cache_k, cache_v]
+        )
+        logits = ops.cast(logits, "float32")
+        logprobs = jax.nn.log_softmax(logits, axis=-1)
+        next_token = ops.argmax(logprobs[:, -1, :], axis=-1)
+        generated.append(next_token[0].item())
 
-    # 5. Convert to strings
-    all_logprobs = ops.concatenate(all_logprobs, axis=1)
-    res = []
-    if max_tokens > 0:
-        generated = ops.concatenate(generated, axis=1)
-
-        for i, x in enumerate(encoded_prompts):
-            next_pred_token = tokenizer.decode(
-                x[:min_prompt_len] + generated[i].tolist()
-            )
-            res.append(next_pred_token)
-    return res, all_logprobs
+    res = prompts[0] + " " + "".join(tokenizer.decode(generated))
+    print(f"Input prompt: {prompts[0]}")
+    print(rf"Generated: {res}")
 
 
 class ModelArgs(NamedTuple):
@@ -144,7 +122,8 @@ def main():
     )
 
     # 5. Sample inputs
-    prompts = ["This is a test"]  # Using only one input as our `max_batch_`size is 1
+    # Using only one input as our `max_batch_`size is 1
+    prompts = ["This is a test"]
 
     # 6. Generate
     results, logprobs = generate(
