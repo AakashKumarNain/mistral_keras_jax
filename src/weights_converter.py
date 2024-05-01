@@ -95,3 +95,13 @@ def load_numpy_weights_to_keras(numpy_weights_file, model):
         print("Oh oh! Something went wrong!\n", ex)
 
     return model
+
+
+def save_keras_model_weights(model, save_file_path):
+    """Saves a Keras model weights to a h5 file.
+
+    Args:
+        model: Keras model
+        save_file_path: Path to the weights file ending with `.weights.h5` extension
+    """
+    model.save_weights(save_file_path)
