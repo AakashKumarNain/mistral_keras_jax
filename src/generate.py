@@ -94,7 +94,7 @@ def main():
         args = ModelArgs(**json.loads(f.read()))
 
     # 2. Load the tokenizer
-    tokenizer = Tokenizer("../../mistral-7B-v0.1/tokenizer.model")
+    tokenizer = Tokenizer(".../model_files/tokenizer.model")
 
     # 3. Build the model
     model = Transformer(args)
