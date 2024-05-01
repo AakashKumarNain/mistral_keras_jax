@@ -1,7 +1,6 @@
 import gc
 import pickle
 import warnings
-import numpy as np
 from keras import ops
 from pathlib import Path
 
@@ -18,10 +17,12 @@ def save_torch_weights_as_numpy_arrays(state_dict, save_path):
 
     if state_dict is None:
         raise ValueError(f"Expected an OrderedDict. Received {state_dict}.")
-    
+
     save_path = Path(save_path)
     if save_path.suffix not in (".pkl", ".pickle"):
-        raise ValueError(f"Expected `save_path` file to have `.pkl` or `pickle` extension.")
+        raise ValueError(
+            "Expected `save_path` file to have `.pkl` or `pickle` extension."
+        )
 
     new_state_dict = {}
 
@@ -35,13 +36,12 @@ def save_torch_weights_as_numpy_arrays(state_dict, save_path):
 
         with open(save_path, "wb") as f:
             pickle.dump(new_state_dict, f, protocol=pickle.HIGHEST_PROTOCOL)
-    
+
     except Exception as ex:
         print("Oh oh! Something went wrong!\n", ex)
 
     del new_state_dict
     gc.collect()
-
 
 
 def load_numpy_weights_to_keras(numpy_weights_file, model):
@@ -62,7 +62,7 @@ def load_numpy_weights_to_keras(numpy_weights_file, model):
         state_dict: Ordered dict containing the weights of Mistral-7B
             model represented in fp16 format.
         save_path: Path to save the pickle file.
-    
+
     Returns:
         model with weights loaded from the pickle file
     """
@@ -70,26 +70,28 @@ def load_numpy_weights_to_keras(numpy_weights_file, model):
     file_path = Path(numpy_weights_file)
 
     if file_path.suffix not in (".pkl", ".pickle"):
-        raise ValueError(f"Expected `numpy_weights_file` file to have `.pkl` or `pickle` extension.")
-    
+        raise ValueError(
+            "Expected `numpy_weights_file` file to have `.pkl` or `pickle` extension."
+        )
+
     if not model.built:
         warnings.warn("The model has't been built yet. Please build the model first.")
         return
-    
+
     try:
         with open(file_path, "rb") as f:
             state_dict = pickle.load(f)
 
         for key, variable in zip(state_dict.keys(), model.trainable_variables):
-            weights = ops.convert_to_tensor(state_dict[key], dtype=kdtype)
+            weights = ops.convert_to_tensor(state_dict[key], dtype="float16")
             variable.assign(weights)
             del weights
             gc.collect()
-            
+
         del state_dict
         gc.collect()
 
     except Exception as ex:
         print("Oh oh! Something went wrong!\n", ex)
-    
+
     return model
